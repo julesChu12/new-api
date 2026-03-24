@@ -321,6 +321,10 @@ func updateVideoTasks(ctx context.Context, platform constant.TaskPlatform, chann
 		}
 		return fmt.Errorf("CacheGetChannel failed: %w", err)
 	}
+	if !shouldPollTencentVODChannel(cacheGetChannel) {
+		logger.LogInfo(ctx, fmt.Sprintf("Channel #%d skipped Tencent VOD polling fallback by settings", channelId))
+		return nil
+	}
 	adaptor := GetTaskAdaptorFunc(platform)
 	if adaptor == nil {
 		return fmt.Errorf("video adaptor not found")
@@ -339,6 +343,14 @@ func updateVideoTasks(ctx context.Context, platform constant.TaskPlatform, chann
 		time.Sleep(1 * time.Second)
 	}
 	return nil
+}
+
+func shouldPollTencentVODChannel(channel *model.Channel) bool {
+	if channel == nil || channel.Type != constant.ChannelTypeTencentVOD {
+		return true
+	}
+	settings := channel.GetOtherSettings()
+	return settings.TencentVODAutoQueryEnabled && settings.TencentVODPollingFallbackEnabled
 }
 
 func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *model.Channel, taskId string, taskM map[string]*model.Task) error {
@@ -360,8 +372,10 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		key = privateData.Key
 	}
 	resp, err := adaptor.FetchTask(baseURL, key, map[string]any{
-		"task_id": task.GetUpstreamTaskID(),
-		"action":  task.Action,
+		"task_id":    task.GetUpstreamTaskID(),
+		"action":     task.Action,
+		"sub_app_id": ch.GetOtherSettings().TencentVODSubAppID,
+		"region":     ch.GetOtherSettings().TencentVODRegion,
 	}, proxy)
 	if err != nil {
 		return fmt.Errorf("fetchTask failed for task %s: %w", taskId, err)
@@ -397,6 +411,20 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	logger.LogDebug(ctx, fmt.Sprintf("updateVideoSingleTask taskResult: %+v", taskResult))
 
 	now := time.Now().Unix()
+	if task.Platform == constant.TaskPlatform("58") {
+		decision, err := ApplyTencentVODTaskUpdate(ctx, task, taskResult, now)
+		if err != nil {
+			return fmt.Errorf("apply tencent vod task update failed for task %s: %w", task.TaskID, err)
+		}
+		if decision.ShouldSettle {
+			settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
+		}
+		if decision.ShouldRefund {
+			RefundTaskQuota(ctx, task, task.FailReason)
+		}
+		return nil
+	}
+
 	if taskResult.Status == "" {
 		//taskResult = relaycommon.FailTaskInfo("upstream returned empty status")
 		errorResult := &dto.GeneralErrorResponse{}

@@ -489,6 +489,42 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 		}
 	}
 
+	if channel.Type == constant.ChannelTypeTencentVOD {
+		trimmedKey := strings.TrimSpace(channel.Key)
+		if isAdd || trimmedKey != "" {
+			parts := strings.Split(trimmedKey, "|")
+			if len(parts) != 2 {
+				return fmt.Errorf("Tencent VOD key must be in SecretId|SecretKey format")
+			}
+			if strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+				return fmt.Errorf("Tencent VOD key must include both SecretId and SecretKey")
+			}
+		}
+
+		otherSettings := channel.GetOtherSettings()
+		if strings.TrimSpace(otherSettings.TencentVODRegion) == "" {
+			return fmt.Errorf("Tencent VOD region cannot be empty")
+		}
+		if otherSettings.TencentVODSubAppID <= 0 {
+			return fmt.Errorf("Tencent VOD sub_app_id must be greater than 0")
+		}
+		if otherSettings.TencentVODPollingIntervalSeconds < 0 {
+			return fmt.Errorf("Tencent VOD polling interval must be greater than or equal to 0")
+		}
+		if otherSettings.TencentVODPollingTimeoutSeconds < 0 {
+			return fmt.Errorf("Tencent VOD polling timeout must be greater than or equal to 0")
+		}
+		if otherSettings.TencentVODPollingIntervalSeconds > 0 && otherSettings.TencentVODPollingTimeoutSeconds > 0 && otherSettings.TencentVODPollingTimeoutSeconds < otherSettings.TencentVODPollingIntervalSeconds {
+			return fmt.Errorf("Tencent VOD polling timeout must be greater than or equal to polling interval")
+		}
+		if strategy := strings.TrimSpace(otherSettings.TencentVODSessionIDStrategy); strategy != "" && strategy != "task_id" {
+			return fmt.Errorf("Tencent VOD session_id strategy must be task_id")
+		}
+		if otherSettings.TencentVODCallbackEnabled && strings.TrimSpace(otherSettings.TencentVODCallbackSecret) == "" {
+			return fmt.Errorf("Tencent VOD callback secret cannot be empty when callback is enabled")
+		}
+	}
+
 	return nil
 }
 

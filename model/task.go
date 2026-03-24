@@ -42,24 +42,25 @@ const (
 )
 
 type Task struct {
-	ID         int64                 `json:"id" gorm:"primary_key;AUTO_INCREMENT"`
-	CreatedAt  int64                 `json:"created_at" gorm:"index"`
-	UpdatedAt  int64                 `json:"updated_at"`
-	TaskID     string                `json:"task_id" gorm:"type:varchar(191);index"` // 第三方id，不一定有/ song id\ Task id
-	Platform   constant.TaskPlatform `json:"platform" gorm:"type:varchar(30);index"` // 平台
-	UserId     int                   `json:"user_id" gorm:"index"`
-	Group      string                `json:"group" gorm:"type:varchar(50)"` // 修正计费用
-	ChannelId  int                   `json:"channel_id" gorm:"index"`
-	Quota      int                   `json:"quota"`
-	Action     string                `json:"action" gorm:"type:varchar(40);index"` // 任务类型, song, lyrics, description-mode
-	Status     TaskStatus            `json:"status" gorm:"type:varchar(20);index"` // 任务状态
-	FailReason string                `json:"fail_reason"`
-	SubmitTime int64                 `json:"submit_time" gorm:"index"`
-	StartTime  int64                 `json:"start_time" gorm:"index"`
-	FinishTime int64                 `json:"finish_time" gorm:"index"`
-	Progress   string                `json:"progress" gorm:"type:varchar(20);index"`
-	Properties Properties            `json:"properties" gorm:"type:json"`
-	Username   string                `json:"username,omitempty" gorm:"-"`
+	ID             int64                 `json:"id" gorm:"primary_key;AUTO_INCREMENT"`
+	CreatedAt      int64                 `json:"created_at" gorm:"index"`
+	UpdatedAt      int64                 `json:"updated_at"`
+	TaskID         string                `json:"task_id" gorm:"type:varchar(191);index"`                                                // 第三方id，不一定有/ song id\ Task id
+	Platform       constant.TaskPlatform `json:"platform" gorm:"type:varchar(30);index;index:idx_platform_upstream_task_id,priority:1"` // 平台
+	UpstreamTaskID string                `json:"upstream_task_id" gorm:"type:varchar(191);index:idx_platform_upstream_task_id,priority:2"`
+	UserId         int                   `json:"user_id" gorm:"index"`
+	Group          string                `json:"group" gorm:"type:varchar(50)"` // 修正计费用
+	ChannelId      int                   `json:"channel_id" gorm:"index"`
+	Quota          int                   `json:"quota"`
+	Action         string                `json:"action" gorm:"type:varchar(40);index"` // 任务类型, song, lyrics, description-mode
+	Status         TaskStatus            `json:"status" gorm:"type:varchar(20);index"` // 任务状态
+	FailReason     string                `json:"fail_reason"`
+	SubmitTime     int64                 `json:"submit_time" gorm:"index"`
+	StartTime      int64                 `json:"start_time" gorm:"index"`
+	FinishTime     int64                 `json:"finish_time" gorm:"index"`
+	Progress       string                `json:"progress" gorm:"type:varchar(20);index"`
+	Properties     Properties            `json:"properties" gorm:"type:json"`
+	Username       string                `json:"username,omitempty" gorm:"-"`
 	// 禁止返回给用户，内部可能包含key等隐私信息
 	PrivateData TaskPrivateData `json:"-" gorm:"column:private_data;type:json"`
 	Data        json.RawMessage `json:"data" gorm:"type:json"`
@@ -120,6 +121,9 @@ type TaskBillingContext struct {
 // GetUpstreamTaskID 获取上游真实 task ID（用于与 provider 通信）
 // 旧数据没有 UpstreamTaskID 时，TaskID 本身就是上游 ID
 func (t *Task) GetUpstreamTaskID() string {
+	if t.UpstreamTaskID != "" {
+		return t.UpstreamTaskID
+	}
 	if t.PrivateData.UpstreamTaskID != "" {
 		return t.PrivateData.UpstreamTaskID
 	}
@@ -336,6 +340,20 @@ func GetByTaskId(userId int, taskId string) (*Task, bool, error) {
 	var err error
 	err = DB.Where("user_id = ? and task_id = ?", userId, taskId).
 		First(&task).Error
+	exist, err := RecordExist(err)
+	if err != nil {
+		return nil, false, err
+	}
+	return task, exist, err
+}
+
+func GetByPlatformAndUpstreamTaskID(platform constant.TaskPlatform, upstreamTaskID string) (*Task, bool, error) {
+	if upstreamTaskID == "" {
+		return nil, false, nil
+	}
+	var task *Task
+	var err error
+	err = DB.Where("platform = ? and upstream_task_id = ?", platform, upstreamTaskID).First(&task).Error
 	exist, err := RecordExist(err)
 	if err != nil {
 		return nil, false, err

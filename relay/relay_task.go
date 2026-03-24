@@ -30,6 +30,61 @@ type TaskSubmitResult struct {
 	//PerCallPrice   types.PriceData
 }
 
+const deferredTaskSubmitResponseKey = "relay_deferred_task_submit_response"
+
+func BuildSubmittedTask(result *TaskSubmitResult, info *relaycommon.RelayInfo) *model.Task {
+	if result == nil || info == nil {
+		return nil
+	}
+	task := model.InitTask(result.Platform, info)
+	task.UpstreamTaskID = result.UpstreamTaskID
+	task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
+	task.PrivateData.BillingSource = info.BillingSource
+	task.PrivateData.SubscriptionId = info.SubscriptionId
+	task.PrivateData.TokenId = info.TokenId
+	task.PrivateData.BillingContext = &model.TaskBillingContext{
+		ModelPrice:      info.PriceData.ModelPrice,
+		GroupRatio:      info.PriceData.GroupRatioInfo.GroupRatio,
+		ModelRatio:      info.PriceData.ModelRatio,
+		OtherRatios:     info.PriceData.OtherRatios,
+		OriginModelName: info.OriginModelName,
+		PerCallBilling:  common.StringsContains(constant.TaskPricePatches, info.OriginModelName),
+	}
+	task.Quota = result.Quota
+	task.Data = result.TaskData
+	task.Action = info.Action
+	return task
+}
+
+func SetDeferredTaskSubmitResponse(c *gin.Context, statusCode int, responseBody []byte) {
+	if c == nil || len(responseBody) == 0 {
+		return
+	}
+	c.Set(deferredTaskSubmitResponseKey, struct {
+		StatusCode int
+		Body       []byte
+	}{StatusCode: statusCode, Body: responseBody})
+}
+
+func WriteDeferredTaskSubmitResponse(c *gin.Context) bool {
+	if c == nil || c.Writer.Written() {
+		return false
+	}
+	v, ok := c.Get(deferredTaskSubmitResponseKey)
+	if !ok {
+		return false
+	}
+	resp, ok := v.(struct {
+		StatusCode int
+		Body       []byte
+	})
+	if !ok || len(resp.Body) == 0 {
+		return false
+	}
+	c.Data(resp.StatusCode, "application/json", resp.Body)
+	return true
+}
+
 // ResolveOriginTask 处理基于已有任务的提交（remix / continuation）：
 // 查找原始任务、从中提取模型名称、将渠道锁定到原始任务的渠道
 // （通过 info.LockedChannel，重试时复用同一渠道并轮换 key），
@@ -438,8 +493,10 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 	}
 
 	resp, err := adaptor.FetchTask(baseURL, channelModel.Key, map[string]any{
-		"task_id": task.GetUpstreamTaskID(),
-		"action":  task.Action,
+		"task_id":    task.GetUpstreamTaskID(),
+		"action":     task.Action,
+		"sub_app_id": channelModel.GetOtherSettings().TencentVODSubAppID,
+		"region":     channelModel.GetOtherSettings().TencentVODRegion,
 	}, proxy)
 	if err != nil || resp == nil {
 		return nil

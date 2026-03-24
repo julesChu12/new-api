@@ -26,6 +26,17 @@ const (
 type ChannelOtherSettings struct {
 	AzureResponsesVersion                 string        `json:"azure_responses_version,omitempty"`
 	VertexKeyType                         VertexKeyType `json:"vertex_key_type,omitempty"` // "json" or "api_key"
+	TencentVODRegion                      string        `json:"tencent_vod_region,omitempty"`
+	TencentVODSubAppID                    int64         `json:"tencent_vod_sub_app_id,omitempty"`
+	TencentVODDefaultModel                string        `json:"tencent_vod_default_model,omitempty"`
+	TencentVODDefaultResolution           string        `json:"tencent_vod_default_resolution,omitempty"`
+	TencentVODPollingIntervalSeconds      int           `json:"tencent_vod_polling_interval_seconds,omitempty"`
+	TencentVODPollingTimeoutSeconds       int           `json:"tencent_vod_polling_timeout_seconds,omitempty"`
+	TencentVODAutoQueryEnabled            bool          `json:"tencent_vod_auto_query_enabled,omitempty"`
+	TencentVODSessionIDStrategy           string        `json:"tencent_vod_session_id_strategy,omitempty"`
+	TencentVODCallbackEnabled             bool          `json:"tencent_vod_callback_enabled,omitempty"`
+	TencentVODPollingFallbackEnabled      bool          `json:"tencent_vod_polling_fallback_enabled,omitempty"`
+	TencentVODCallbackSecret              string        `json:"tencent_vod_callback_secret,omitempty"`
 	OpenRouterEnterprise                  *bool         `json:"openrouter_enterprise,omitempty"`
 	ClaudeBetaQuery                       bool          `json:"claude_beta_query,omitempty"`         // Claude 渠道是否强制追加 ?beta=true
 	AllowServiceTier                      bool          `json:"allow_service_tier,omitempty"`        // 是否允许 service_tier 透传（默认过滤以避免额外计费）

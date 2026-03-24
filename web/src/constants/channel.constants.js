@@ -112,6 +112,7 @@ export const CHANNEL_OPTIONS = [
   { value: 20, color: 'green', label: 'OpenRouter' },
   { value: 19, color: 'blue', label: '360 智脑' },
   { value: 23, color: 'teal', label: '腾讯混元' },
+  { value: 58, color: 'teal', label: 'Tencent VOD' },
   { value: 31, color: 'green', label: '零一万物' },
   { value: 35, color: 'green', label: 'MiniMax' },
   { value: 37, color: 'teal', label: 'Dify' },

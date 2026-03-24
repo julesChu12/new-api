@@ -142,6 +142,8 @@ function type2secretPrompt(type) {
       return '按照如下格式输入：APIKey-AppId，例如：fastgpt-0sp2gtvfdgyi4k30jwlgwf1i-64f335d84283f05518e9e041';
     case 23:
       return '按照如下格式输入：AppId|SecretId|SecretKey';
+    case 58:
+      return '按照如下格式输入：SecretId|SecretKey';
     case 33:
       return '按照如下格式输入：Ak|Sk|Region';
     case 45:
@@ -211,6 +213,17 @@ const EditChannelModal = (props) => {
     upstream_model_update_last_check_time: 0,
     upstream_model_update_last_detected_models: [],
     upstream_model_update_ignored_models: '',
+    tencent_vod_region: '',
+    tencent_vod_sub_app_id: 0,
+    tencent_vod_default_model: '',
+    tencent_vod_default_resolution: '1024x1024',
+    tencent_vod_polling_interval_seconds: 30,
+    tencent_vod_polling_timeout_seconds: 7200,
+    tencent_vod_auto_query_enabled: true,
+    tencent_vod_session_id_strategy: 'task_id',
+    tencent_vod_callback_enabled: true,
+    tencent_vod_polling_fallback_enabled: true,
+    tencent_vod_callback_secret: '',
   };
   const [batch, setBatch] = useState(false);
   const [multiToSingle, setMultiToSingle] = useState(false);
@@ -886,6 +899,27 @@ const EditChannelModal = (props) => {
           data.vertex_key_type = parsedSettings.vertex_key_type || 'json';
           // 读取 AWS 密钥格式和区域
           data.aws_key_type = parsedSettings.aws_key_type || 'ak_sk';
+          data.tencent_vod_region = parsedSettings.tencent_vod_region || '';
+          data.tencent_vod_sub_app_id =
+            Number(parsedSettings.tencent_vod_sub_app_id) || 0;
+          data.tencent_vod_default_model =
+            parsedSettings.tencent_vod_default_model || '';
+          data.tencent_vod_default_resolution =
+            parsedSettings.tencent_vod_default_resolution || '1024x1024';
+          data.tencent_vod_polling_interval_seconds =
+            parsedSettings.tencent_vod_polling_interval_seconds ?? 30;
+          data.tencent_vod_polling_timeout_seconds =
+            parsedSettings.tencent_vod_polling_timeout_seconds ?? 7200;
+          data.tencent_vod_auto_query_enabled =
+            parsedSettings.tencent_vod_auto_query_enabled !== false;
+          data.tencent_vod_session_id_strategy =
+            parsedSettings.tencent_vod_session_id_strategy || 'task_id';
+          data.tencent_vod_callback_enabled =
+            parsedSettings.tencent_vod_callback_enabled !== false;
+          data.tencent_vod_polling_fallback_enabled =
+            parsedSettings.tencent_vod_polling_fallback_enabled !== false;
+          data.tencent_vod_callback_secret =
+            parsedSettings.tencent_vod_callback_secret || '';
           // 读取企业账户设置
           data.is_enterprise_account =
             parsedSettings.openrouter_enterprise === true;
@@ -921,6 +955,17 @@ const EditChannelModal = (props) => {
           data.region = '';
           data.vertex_key_type = 'json';
           data.aws_key_type = 'ak_sk';
+          data.tencent_vod_region = '';
+          data.tencent_vod_sub_app_id = 0;
+          data.tencent_vod_default_model = '';
+          data.tencent_vod_default_resolution = '1024x1024';
+          data.tencent_vod_polling_interval_seconds = 30;
+          data.tencent_vod_polling_timeout_seconds = 7200;
+          data.tencent_vod_auto_query_enabled = true;
+          data.tencent_vod_session_id_strategy = 'task_id';
+          data.tencent_vod_callback_enabled = true;
+          data.tencent_vod_polling_fallback_enabled = true;
+          data.tencent_vod_callback_secret = '';
           data.is_enterprise_account = false;
           data.allow_service_tier = false;
           data.disable_store = false;
@@ -938,6 +983,17 @@ const EditChannelModal = (props) => {
         // 兼容历史数据：老渠道没有 settings 时，默认按 json 展示
         data.vertex_key_type = 'json';
         data.aws_key_type = 'ak_sk';
+        data.tencent_vod_region = '';
+        data.tencent_vod_sub_app_id = 0;
+        data.tencent_vod_default_model = '';
+        data.tencent_vod_default_resolution = '1024x1024';
+        data.tencent_vod_polling_interval_seconds = 30;
+        data.tencent_vod_polling_timeout_seconds = 7200;
+        data.tencent_vod_auto_query_enabled = true;
+        data.tencent_vod_session_id_strategy = 'task_id';
+        data.tencent_vod_callback_enabled = true;
+        data.tencent_vod_polling_fallback_enabled = true;
+        data.tencent_vod_callback_secret = '';
         data.is_enterprise_account = false;
         data.allow_service_tier = false;
         data.disable_store = false;
@@ -1597,6 +1653,45 @@ const EditChannelModal = (props) => {
       }
     }
 
+    if (localInputs.type === 58) {
+      if (!localInputs.key || localInputs.key.trim() === '') {
+        showInfo(t('请输入密钥！'));
+        return;
+      }
+      if (!localInputs.tencent_vod_region) {
+        showInfo(t('请输入 Tencent VOD 地域'));
+        return;
+      }
+      if (Number(localInputs.tencent_vod_sub_app_id) <= 0) {
+        showInfo(t('请输入有效的 Tencent VOD SubAppId'));
+        return;
+      }
+      if (Number(localInputs.tencent_vod_polling_interval_seconds) < 0) {
+        showInfo(t('轮询间隔不能小于 0'));
+        return;
+      }
+      if (Number(localInputs.tencent_vod_polling_timeout_seconds) < 0) {
+        showInfo(t('轮询超时不能小于 0'));
+        return;
+      }
+      if (
+        Number(localInputs.tencent_vod_polling_interval_seconds) > 0 &&
+        Number(localInputs.tencent_vod_polling_timeout_seconds) > 0 &&
+        Number(localInputs.tencent_vod_polling_timeout_seconds) <
+          Number(localInputs.tencent_vod_polling_interval_seconds)
+      ) {
+        showInfo(t('轮询超时必须大于等于轮询间隔'));
+        return;
+      }
+      if (
+        localInputs.tencent_vod_callback_enabled &&
+        !localInputs.tencent_vod_callback_secret
+      ) {
+        showInfo(t('启用回调时必须填写 callback secret'));
+        return;
+      }
+    }
+
     // 如果是编辑模式且 key 为空字符串，避免提交空值覆盖旧密钥
     if (isEdit && (!localInputs.key || localInputs.key.trim() === '')) {
       delete localInputs.key;
@@ -1737,6 +1832,30 @@ const EditChannelModal = (props) => {
       delete settings.vertex_key_type;
     }
 
+    if (localInputs.type === 58) {
+      settings.tencent_vod_region = localInputs.tencent_vod_region || '';
+      settings.tencent_vod_sub_app_id =
+        Number(localInputs.tencent_vod_sub_app_id) || 0;
+      settings.tencent_vod_default_model =
+        localInputs.tencent_vod_default_model || '';
+      settings.tencent_vod_default_resolution =
+        localInputs.tencent_vod_default_resolution || '';
+      settings.tencent_vod_polling_interval_seconds =
+        Number(localInputs.tencent_vod_polling_interval_seconds) || 0;
+      settings.tencent_vod_polling_timeout_seconds =
+        Number(localInputs.tencent_vod_polling_timeout_seconds) || 0;
+      settings.tencent_vod_auto_query_enabled =
+        localInputs.tencent_vod_auto_query_enabled === true;
+      settings.tencent_vod_session_id_strategy =
+        localInputs.tencent_vod_session_id_strategy || 'task_id';
+      settings.tencent_vod_callback_enabled =
+        localInputs.tencent_vod_callback_enabled === true;
+      settings.tencent_vod_polling_fallback_enabled =
+        localInputs.tencent_vod_polling_fallback_enabled === true;
+      settings.tencent_vod_callback_secret =
+        localInputs.tencent_vod_callback_secret || '';
+    }
+
     // type === 1 (OpenAI) 或 type === 14 (Claude): 设置字段透传控制（显式保存布尔值）
     if (localInputs.type === 1 || localInputs.type === 14) {
       settings.allow_service_tier = localInputs.allow_service_tier === true;
@@ -1798,6 +1917,17 @@ const EditChannelModal = (props) => {
     delete localInputs.allow_include_obfuscation;
     delete localInputs.allow_inference_geo;
     delete localInputs.claude_beta_query;
+    delete localInputs.tencent_vod_region;
+    delete localInputs.tencent_vod_sub_app_id;
+    delete localInputs.tencent_vod_default_model;
+    delete localInputs.tencent_vod_default_resolution;
+    delete localInputs.tencent_vod_polling_interval_seconds;
+    delete localInputs.tencent_vod_polling_timeout_seconds;
+    delete localInputs.tencent_vod_auto_query_enabled;
+    delete localInputs.tencent_vod_session_id_strategy;
+    delete localInputs.tencent_vod_callback_enabled;
+    delete localInputs.tencent_vod_polling_fallback_enabled;
+    delete localInputs.tencent_vod_callback_secret;
     delete localInputs.upstream_model_update_check_enabled;
     delete localInputs.upstream_model_update_auto_sync_enabled;
     delete localInputs.upstream_model_update_last_check_time;
@@ -2346,6 +2476,208 @@ const EditChannelModal = (props) => {
                             : t('JSON 模式支持手动输入或上传服务账号 JSON')
                         }
                       />
+                    )}
+
+                    {inputs.type === 58 && (
+                      <>
+                        <Banner
+                          type='info'
+                          description={t(
+                            'Tencent VOD 图片渠道使用 SecretId|SecretKey 鉴权，SubAppId、地域和轮询策略通过下方字段保存到渠道 settings。',
+                          )}
+                          className='!rounded-lg mb-3'
+                        />
+                        <Row gutter={12}>
+                          <Col span={12}>
+                            <Form.Input
+                              field='tencent_vod_region'
+                              label={t('地域')}
+                              placeholder={t('例如：ap-guangzhou')}
+                              rules={[
+                                {
+                                  required: true,
+                                  message: t('请输入 Tencent VOD 地域'),
+                                },
+                              ]}
+                              onChange={(value) =>
+                                handleChannelOtherSettingsChange(
+                                  'tencent_vod_region',
+                                  value,
+                                )
+                              }
+                              showClear
+                            />
+                          </Col>
+                          <Col span={12}>
+                            <Form.InputNumber
+                              field='tencent_vod_sub_app_id'
+                              label={t('SubAppId')}
+                              min={1}
+                              precision={0}
+                              style={{ width: '100%' }}
+                              onNumberChange={(value) =>
+                                handleChannelOtherSettingsChange(
+                                  'tencent_vod_sub_app_id',
+                                  value || 0,
+                                )
+                              }
+                            />
+                          </Col>
+                        </Row>
+                        <Row gutter={12}>
+                          <Col span={12}>
+                            <Form.Input
+                              field='tencent_vod_default_model'
+                              label={t('默认模型')}
+                              placeholder={t('例如：hunyuan-image')}
+                              onChange={(value) =>
+                                handleChannelOtherSettingsChange(
+                                  'tencent_vod_default_model',
+                                  value,
+                                )
+                              }
+                              showClear
+                            />
+                          </Col>
+                          <Col span={12}>
+                            <Form.Select
+                              field='tencent_vod_default_resolution'
+                              label={t('默认分辨率')}
+                              optionList={[
+                                { label: '512x512', value: '512x512' },
+                                { label: '768x768', value: '768x768' },
+                                { label: '1024x1024', value: '1024x1024' },
+                              ]}
+                              style={{ width: '100%' }}
+                              value={
+                                inputs.tencent_vod_default_resolution ||
+                                '1024x1024'
+                              }
+                              onChange={(value) =>
+                                handleChannelOtherSettingsChange(
+                                  'tencent_vod_default_resolution',
+                                  value,
+                                )
+                              }
+                            />
+                          </Col>
+                        </Row>
+                        <Row gutter={12}>
+                          <Col span={12}>
+                            <Form.InputNumber
+                              field='tencent_vod_polling_interval_seconds'
+                              label={t('轮询间隔（秒）')}
+                              min={0}
+                              precision={0}
+                              style={{ width: '100%' }}
+                              onNumberChange={(value) =>
+                                handleChannelOtherSettingsChange(
+                                  'tencent_vod_polling_interval_seconds',
+                                  value || 0,
+                                )
+                              }
+                              extraText={t(
+                                '0 表示仅依赖回调；首版推荐保持 30 秒作为兜底轮询间隔',
+                              )}
+                            />
+                          </Col>
+                          <Col span={12}>
+                            <Form.InputNumber
+                              field='tencent_vod_polling_timeout_seconds'
+                              label={t('轮询超时（秒）')}
+                              min={0}
+                              precision={0}
+                              style={{ width: '100%' }}
+                              onNumberChange={(value) =>
+                                handleChannelOtherSettingsChange(
+                                  'tencent_vod_polling_timeout_seconds',
+                                  value || 0,
+                                )
+                              }
+                              extraText={t(
+                                '0 表示不启用超时保护；首版推荐保持 7200 秒',
+                              )}
+                            />
+                          </Col>
+                        </Row>
+                        <Form.Switch
+                          field='tencent_vod_auto_query_enabled'
+                          label={t('启用自动轮询兜底')}
+                          checkedText={t('开')}
+                          uncheckedText={t('关')}
+                          onChange={(value) =>
+                            handleChannelOtherSettingsChange(
+                              'tencent_vod_auto_query_enabled',
+                              value,
+                            )
+                          }
+                          extraText={t(
+                            '开启后可作为回调失败时的补偿查询开关，Phase 1 先保存配置。',
+                          )}
+                        />
+                        <Form.Switch
+                          field='tencent_vod_callback_enabled'
+                          label={t('启用回调主链路')}
+                          checkedText={t('开')}
+                          uncheckedText={t('关')}
+                          onChange={(value) =>
+                            handleChannelOtherSettingsChange(
+                              'tencent_vod_callback_enabled',
+                              value,
+                            )
+                          }
+                          extraText={t(
+                            '开启后使用 Tencent VOD callback 作为主完成链路。',
+                          )}
+                        />
+                        <Form.Switch
+                          field='tencent_vod_polling_fallback_enabled'
+                          label={t('启用轮询兜底')}
+                          checkedText={t('开')}
+                          uncheckedText={t('关')}
+                          onChange={(value) =>
+                            handleChannelOtherSettingsChange(
+                              'tencent_vod_polling_fallback_enabled',
+                              value,
+                            )
+                          }
+                          extraText={t(
+                            '回调缺失或延迟时，允许轮询补偿推进任务。',
+                          )}
+                        />
+                        <Form.Input
+                          field='tencent_vod_callback_secret'
+                          label={t('Callback Secret')}
+                          placeholder={t('用于 /api/tencent_vod/callback 的校验 token')}
+                          onChange={(value) =>
+                            handleChannelOtherSettingsChange(
+                              'tencent_vod_callback_secret',
+                              value,
+                            )
+                          }
+                          showClear
+                        />
+                        <Form.Select
+                          field='tencent_vod_session_id_strategy'
+                          label={t('SessionId 策略')}
+                          optionList={[
+                            { label: 'task_id', value: 'task_id' },
+                          ]}
+                          style={{ width: '100%' }}
+                          value={
+                            inputs.tencent_vod_session_id_strategy || 'task_id'
+                          }
+                          onChange={(value) =>
+                            handleChannelOtherSettingsChange(
+                              'tencent_vod_session_id_strategy',
+                              value,
+                            )
+                          }
+                          extraText={t(
+                            '当前实现固定使用内部 TaskID 衍生 SessionId，先保留显式配置以便后续扩展。',
+                          )}
+                        />
+                      </>
                     )}
                     {batch ? (
                       inputs.type === 41 &&
