@@ -32,6 +32,18 @@ type TaskSubmitResult struct {
 
 const deferredTaskSubmitResponseKey = "relay_deferred_task_submit_response"
 
+func IsTaskImageChannelType(channelType int) bool {
+	return channelType == constant.ChannelTypeTencentVOD
+}
+
+func IsTaskImagePlatform(platform constant.TaskPlatform) bool {
+	channelType, err := strconv.Atoi(string(platform))
+	if err != nil {
+		return false
+	}
+	return IsTaskImageChannelType(channelType)
+}
+
 func BuildSubmittedTask(result *TaskSubmitResult, info *relaycommon.RelayInfo) *model.Task {
 	if result == nil || info == nil {
 		return nil
@@ -411,6 +423,62 @@ func sunoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dt
 		Code: "success",
 		Data: TaskModel2Dto(originTask),
 	})
+	return
+}
+
+func RelayImageTaskFetchByID(c *gin.Context) (taskResp *dto.TaskError) {
+	taskId := c.Param("task_id")
+	if strings.TrimSpace(taskId) == "" {
+		taskResp = service.TaskErrorWrapperLocal(errors.New("task_id is required"), "invalid_request", http.StatusBadRequest)
+		return
+	}
+	userId := c.GetInt("id")
+
+	originTask, exist, err := model.GetByTaskId(userId, taskId)
+	if err != nil {
+		taskResp = service.TaskErrorWrapper(err, "get_task_failed", http.StatusInternalServerError)
+		return
+	}
+	if !exist {
+		taskResp = service.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusBadRequest)
+		return
+	}
+	if !IsTaskImagePlatform(originTask.Platform) {
+		taskResp = service.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusBadRequest)
+		return
+	}
+
+	response := dto.ImageTaskResponse{
+		TaskID: originTask.TaskID,
+		Status: mapTaskStatusToSimple(originTask.Status),
+	}
+	if originTask.Status == model.TaskStatusSuccess {
+		response.Url = originTask.GetResultURL()
+	} else if originTask.PrivateData.ResultURL != "" {
+		response.Url = originTask.PrivateData.ResultURL
+	}
+	if originTask.Status == model.TaskStatusFailure {
+		response.Error = &dto.ImageTaskError{
+			Message: originTask.FailReason,
+			Code:    "task_failed",
+		}
+	}
+
+	respBody, err := common.Marshal(dto.TaskResponse[dto.ImageTaskResponse]{
+		Code: "success",
+		Data: response,
+	})
+	if err != nil {
+		taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
+		return
+	}
+
+	c.Writer.Header().Set("Content-Type", "application/json")
+	_, err = io.Copy(c.Writer, bytes.NewBuffer(respBody))
+	if err != nil {
+		taskResp = service.TaskErrorWrapper(err, "copy_response_body_failed", http.StatusInternalServerError)
+		return
+	}
 	return
 }
 

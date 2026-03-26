@@ -245,6 +245,10 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	// 更新请求中的模型名称
 	request.SetModelName(testModel)
 
+	if info.RelayMode == relayconstant.RelayModeImagesGenerations && relay.IsTaskImageChannelType(channel.Type) {
+		return testTaskImageChannel(c, w, request, info, channel)
+	}
+
 	apiType, _ := common.ChannelType2APIType(channel.Type)
 	if info.RelayMode == relayconstant.RelayModeResponsesCompact &&
 		apiType != constant.APITypeOpenAI &&
@@ -497,6 +501,120 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		Other:            other,
 	})
 	common.SysLog(fmt.Sprintf("testing channel #%d, response: \n%s", channel.Id, string(respBody)))
+	return testResult{
+		context:     c,
+		localErr:    nil,
+		newAPIError: nil,
+	}
+}
+
+func testTaskImageChannel(c *gin.Context, w *httptest.ResponseRecorder, request dto.Request, info *relaycommon.RelayInfo, channel *model.Channel) testResult {
+	platform := constant.TaskPlatform(strconv.Itoa(channel.Type))
+	adaptor := relay.GetTaskAdaptor(platform)
+	if adaptor == nil {
+		err := fmt.Errorf("invalid task platform: %s", platform)
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeInvalidApiType),
+		}
+	}
+
+	requestBody, err := common.Marshal(request)
+	if err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeJsonMarshalFailed),
+		}
+	}
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
+
+	if info.TaskRelayInfo == nil {
+		info.TaskRelayInfo = &relaycommon.TaskRelayInfo{}
+	}
+	if info.PublicTaskID == "" {
+		info.TaskRelayInfo.PublicTaskID = model.GenerateTaskID()
+	}
+
+	adaptor.Init(info)
+	if taskErr := adaptor.ValidateRequestAndSetAction(c, info); taskErr != nil {
+		return testResult{
+			context:     c,
+			localErr:    taskErr.Error,
+			newAPIError: types.NewOpenAIError(taskErr.Error, types.ErrorCodeInvalidRequest, taskErr.StatusCode),
+		}
+	}
+
+	upstreamRequestBody, err := adaptor.BuildRequestBody(c, info)
+	if err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeConvertRequestFailed),
+		}
+	}
+
+	resp, err := adaptor.DoRequest(c, info, upstreamRequestBody)
+	if err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError),
+		}
+	}
+	if resp == nil {
+		err = errors.New("task response is nil")
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
+		}
+	}
+	if resp != nil && resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		err = fmt.Errorf("%s", string(respBody))
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewOpenAIError(err, types.ErrorCodeBadResponse, resp.StatusCode),
+		}
+	}
+
+	_, _, taskErr := adaptor.DoResponse(c, resp, info)
+	if taskErr != nil {
+		return testResult{
+			context:     c,
+			localErr:    taskErr.Error,
+			newAPIError: types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseBody, taskErr.StatusCode),
+		}
+	}
+
+	if !relay.WriteDeferredTaskSubmitResponse(c) {
+		err = errors.New("missing deferred task response")
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
+		}
+	}
+	result := w.Result()
+	respBody, err := readTestResponseBody(result.Body, false)
+	if err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError),
+		}
+	}
+	if bodyErr := detectErrorFromTestResponseBody(respBody); bodyErr != nil {
+		return testResult{
+			context:     c,
+			localErr:    bodyErr,
+			newAPIError: types.NewOpenAIError(bodyErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
+		}
+	}
+
 	return testResult{
 		context:     c,
 		localErr:    nil,

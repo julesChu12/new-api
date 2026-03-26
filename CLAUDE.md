@@ -130,3 +130,7 @@ For request structs that are parsed from client JSON and then re-marshaled to up
   - field absent in client JSON => `nil` => omitted on marshal;
   - field explicitly set to zero/false => non-`nil` pointer => must still be sent upstream.
 - Avoid using non-pointer scalars with `omitempty` for optional request parameters, because zero values (`0`, `0.0`, `false`) will be silently dropped during marshal.
+
+### Rule 7: Language — Use Chinese for Responses
+
+AI responses should use Simplified Chinese (简体中文) as the primary language, unless the user explicitly requests English or another language.

@@ -437,6 +437,20 @@ func RelayMidjourney(c *gin.Context) {
 	}
 }
 
+func RelayImage(c *gin.Context) {
+	if relay.IsTaskImageChannelType(c.GetInt("channel_type")) {
+		RelayTask(c)
+		return
+	}
+	Relay(c, types.RelayFormatOpenAIImage)
+}
+
+func RelayImageTaskFetch(c *gin.Context) {
+	if taskErr := relay.RelayImageTaskFetchByID(c); taskErr != nil {
+		respondTaskError(c, taskErr)
+	}
+}
+
 func RelayNotImplemented(c *gin.Context) {
 	err := types.OpenAIError{
 		Message: "API not implemented",

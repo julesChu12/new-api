@@ -175,6 +175,19 @@ type ImageResponse struct {
 	Created  int64           `json:"created"`
 	Metadata json.RawMessage `json:"metadata,omitempty"`
 }
+
+type ImageTaskResponse struct {
+	TaskID string          `json:"task_id"`
+	Status string          `json:"status"`
+	Url    string          `json:"url,omitempty"`
+	Error  *ImageTaskError `json:"error,omitempty"`
+}
+
+type ImageTaskError struct {
+	Message string `json:"message"`
+	Code    string `json:"code,omitempty"`
+}
+
 type ImageData struct {
 	Url           string `json:"url"`
 	B64Json       string `json:"b64_json"`
